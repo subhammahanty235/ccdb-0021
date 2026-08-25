@@ -85,7 +85,13 @@ func (n *Node) lastLogIndexAndTermLocked() (int, int) {
 // Start launches the node's background loop. For Step 1 this only proves
 // the node is alive and sitting in Follower state — no elections yet.
 func (n *Node) Start() {
+	n.mu.Lock()
 	log.Printf("[node %d] starting as %s, term %d", n.id, n.state, n.currentTerm)
+	n.electionResetEvent = time.Now()
+	n.mu.Unlock()
+
+	go n.runElectionTimer()
+
 }
 
 func (n *Node) Stop() {

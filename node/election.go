@@ -38,8 +38,8 @@ func (n *Node) runElectionTimer() {
 			n.mu.Unlock()
 
 			if elapsed >= timeoutDuration {
-				// n.start - start election
-
+				//  start election
+				n.startElection()
 				return
 			}
 
@@ -106,4 +106,43 @@ func (n *Node) becomeLeaderLocked() {
 	n.state = Leader
 	log.Printf("[node %d] *** elected LEADER *** for term %d", n.id, n.currentTerm)
 	// run heartbeats
+	go n.runHeartBeat()
+}
+
+func (n *Node) runHeartBeat() {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		n.mu.Lock()
+		if n.state != Leader {
+			n.mu.Unlock()
+			return
+		}
+		savedTerm := n.currentTerm
+		n.mu.Unlock()
+
+		for _, peerID := range n.peers {
+			go func(peerId int) {
+				args := AppendEntriesArgs{Term: savedTerm, LeaderID: n.id}
+				reply, ok := n.sender.SendAppendEntries(peerId, args)
+				if !ok {
+					return
+				}
+
+				n.mu.Lock()
+				defer n.mu.Unlock()
+
+				if reply.Term > n.currentTerm {
+					n.becomeFollowerLocked(reply.Term)
+				}
+			}(peerID)
+		}
+
+		select {
+		case <-ticker.C:
+		case <-n.stopCh:
+			return
+		}
+	}
 }

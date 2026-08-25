@@ -25,11 +25,13 @@ func main() {
 	}
 
 	log.Println("--- all 3 replicas up, sitting in Follower state ---")
-	log.Println("--- next step: leader election ---")
+	log.Println("--- watching for an election ---")
 
-	time.Sleep(500 * time.Millisecond)
-	for id, n := range nodes {
-		log.Printf("node %d final state: %s", id, n.State())
+	time.Sleep(2 * time.Second)
+	log.Println("--- state after 2 seconds ---")
+	for _, id := range ids {
+		n := nodes[id]
+		log.Printf("node %d: state=%s term=%d votedFor=%d", id, n.State(), n.Term(), n.VotedFor())
 	}
 }
 
