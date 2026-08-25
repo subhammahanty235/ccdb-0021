@@ -75,6 +75,8 @@ func (n *Node) becomeFollowerLocked(term int) {
 	n.currentTerm = term
 	n.votedFor = -1
 	n.electionResetEvent = time.Now()
+
+	go n.runElectionTimer()
 }
 
 func (n *Node) lastLogIndexAndTermLocked() (int, int) {
@@ -95,6 +97,13 @@ func (n *Node) Start() {
 }
 
 func (n *Node) Stop() {
+	close(n.stopCh)
+}
+
+func (n *Node) Kill() {
+	n.mu.Lock()
+	log.Printf("[node %d] *** KILLED (simulated crash) ***", n.id)
+	n.mu.Unlock()
 	close(n.stopCh)
 }
 

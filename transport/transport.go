@@ -44,6 +44,13 @@ func (t *InMemoryTransport) Register(id int, handler RPCHandler) {
 	t.handers[id] = handler
 }
 
+func (t *InMemoryTransport) UnRegister(id int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	delete(t.handers, id)
+}
+
 func (t *InMemoryTransport) simulateNetwork() bool {
 	if t.DropRate > 0 && rand.Float64() < t.DropRate {
 		return false
