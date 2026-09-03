@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -105,6 +106,11 @@ func (n *Node) startElection() {
 func (n *Node) becomeLeaderLocked() {
 	n.state = Leader
 	log.Printf("[node %d] *** elected LEADER *** for term %d", n.id, n.currentTerm)
+	// TU - IMP
+	for _, peerId := range n.peers {
+		n.nextIndex[peerId] = len(n.logEntries)
+		n.matchIndex[peerId] = 0
+	}
 	// run heartbeats
 	go n.runHeartBeat()
 }
@@ -124,8 +130,27 @@ func (n *Node) runHeartBeat() {
 
 		for _, peerID := range n.peers {
 			go func(peerId int) {
-				args := AppendEntriesArgs{Term: savedTerm, LeaderID: n.id}
-				reply, ok := n.sender.SendAppendEntries(peerId, args)
+				n.mu.Lock()
+				ni := n.nextIndex[peerId]
+				fmt.Printf("peer id is %d and next index is %d\n", peerId, ni)
+				fmt.Println("Log entries length is ", len(n.logEntries))
+				prevLogIndex := ni - 1
+				fmt.Println("Prev log index is  ", prevLogIndex)
+				prevLogTerm := n.logEntries[prevLogIndex].Term
+				entries := append([]LogEntry{}, n.logEntries[ni:]...)
+				leadercommit := n.commitIndex
+				n.mu.Unlock()
+
+				args := AppendEntriesArgs{
+					Term:         savedTerm,
+					LeaderID:     n.id,
+					PrevLogIndex: prevLogIndex,
+					PrevLogTerm:  prevLogTerm,
+					Entries:      entries,
+					LeaderCommit: leadercommit,
+				}
+
+				reply, ok := n.sender.SendAppendEntries(peerID, args)
 				if !ok {
 					return
 				}
@@ -133,9 +158,24 @@ func (n *Node) runHeartBeat() {
 				n.mu.Lock()
 				defer n.mu.Unlock()
 
+				if n.state != Leader || n.currentTerm != savedTerm {
+					return
+				}
+
 				if reply.Term > n.currentTerm {
 					n.becomeFollowerLocked(reply.Term)
+					return
 				}
+
+				if reply.Success {
+					n.nextIndex[peerID] = ni + len(entries)
+					n.updateCommitedIndexLocked()
+				} else {
+					if n.nextIndex[peerID] > 1 {
+						n.nextIndex[peerID]--
+					}
+				}
+
 			}(peerID)
 		}
 

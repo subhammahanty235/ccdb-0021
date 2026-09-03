@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ type Node struct {
 	matchIndex map[int]int
 
 	electionResetEvent time.Time
+	kv                 map[string]string
 	stopCh             chan struct{}
 }
 
@@ -43,8 +45,8 @@ func NewNode(id int, peers []int, sender Sender) *Node {
 		state:       Follower,
 		nextIndex:   make(map[int]int),
 		matchIndex:  make(map[int]int),
-
-		stopCh: make(chan struct{}),
+		kv:          make(map[string]string),
+		stopCh:      make(chan struct{}),
 	}
 }
 
@@ -107,6 +109,72 @@ func (n *Node) Kill() {
 	close(n.stopCh)
 }
 
+func (n *Node) Submit(cmd interface{}) (index int, isLeader bool) {
+	log.Printf("Submitting log")
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.state != Leader {
+		return -1, false
+	}
+
+	entry := LogEntry{
+		Term:    n.currentTerm,
+		Index:   len(n.logEntries),
+		Command: cmd,
+	}
+
+	n.logEntries = append(n.logEntries, entry)
+	log.Printf("[node %d] appended %v at index %d (not yet committed)", n.id, cmd, entry.Index)
+	return entry.Index, true
+}
+
+func (n *Node) Get(key string) (string, bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	v, ok := n.kv[key]
+	return v, ok
+}
+
+// checks whether any new entry now has a majprity of relicas storing it,
+func (n *Node) updateCommitedIndexLocked() {
+	fmt.Printf("Update commityed index locked running\n")
+	for N := len(n.logEntries) - 1; N > n.commitIndex; N-- {
+		if n.logEntries[N].Term != n.currentTerm {
+			continue
+		}
+
+		count := 1
+		for _, peerID := range n.peers {
+			if n.nextIndex[peerID] >= N {
+				count++
+			}
+		}
+		fmt.Printf("checking majority here %d , and lengh of peer is %d--------------->\n", count, len(n.peers))
+		if count*2 > len(n.peers)+1 { // majority
+			n.commitIndex = N
+			n.applyCommitedLocked()
+			// apply commited index
+			break
+		} else {
+
+			fmt.Printf("<--------------- No majority found \n")
+		}
+	}
+}
+
+func (n *Node) applyCommitedLocked() {
+	fmt.Printf("apply commityed index locked running\n")
+	for n.lastApplied < n.commitIndex {
+		n.lastApplied++
+		entry := n.logEntries[n.lastApplied]
+		if put, ok := entry.Command.(Put); ok {
+			n.kv[put.Key] = put.Value
+			log.Printf("[node %d] applied %v at index %d", n.id, put, n.lastApplied)
+		}
+	}
+}
+
 func (n *Node) HandleRequestVote(args RequestVoteArgs) RequestVoteReply {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -151,5 +219,41 @@ func (n *Node) HandleAppendEntries(args AppendEntriesArgs) AppendEntriesReply {
 	}
 
 	n.electionResetEvent = time.Now()
-	return AppendEntriesReply{Term: n.currentTerm, Success: true}
+
+	if args.PrevLogIndex > 0 {
+		if args.PrevLogIndex >= len(n.logEntries) {
+			return AppendEntriesReply{n.currentTerm, false}
+		}
+		if n.logEntries[args.PrevLogIndex].Term != args.PrevLogTerm {
+			return AppendEntriesReply{n.currentTerm, false}
+		}
+	}
+
+	insertIndex := args.PrevLogIndex + 1
+	for i, entry := range args.Entries {
+		idx := insertIndex + i
+		if idx < len(n.logEntries) {
+			if n.logEntries[idx].Term != entry.Term {
+				n.logEntries = append(n.logEntries[:idx], args.Entries[i:]...)
+				break
+			}
+			continue
+		}
+		n.logEntries = append(n.logEntries, args.Entries[i:]...)
+		break
+
+	}
+
+	if args.LeaderCommit > n.commitIndex {
+		lastNewIndex := args.PrevLogIndex + len(args.Entries)
+		if args.LeaderCommit < lastNewIndex {
+			n.commitIndex = args.LeaderCommit
+		} else {
+			n.commitIndex = lastNewIndex
+		}
+
+		n.applyCommitedLocked()
+	}
+
+	return AppendEntriesReply{n.currentTerm, true}
 }

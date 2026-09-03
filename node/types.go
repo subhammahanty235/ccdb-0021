@@ -64,3 +64,9 @@ func (a AppendEntriesArgs) String() string {
 
 	return fmt.Sprintf("%s{term=%d leader=%d prevIdx=%d entries=%d}", kind, a.Term, a.LeaderID, a.PrevLogIndex, len(a.Entries))
 }
+
+// SC
+type Put struct {
+	Key   string
+	Value string
+}

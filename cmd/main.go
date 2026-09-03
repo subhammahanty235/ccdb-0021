@@ -27,30 +27,32 @@ func main() {
 	log.Println("--- all 3 replicas up, sitting in Follower state ---")
 	log.Println("--- watching for an election ---")
 
-	// time.Sleep(500 * time.Microsecond)
+	time.Sleep(500 * time.Microsecond)
 
-	// leaderID := findLeader(nodes, ids)
-	// if leaderID == 0 {
-	// 	log.Println("no leader elected yet, waiting a bit more...")
-	// 	time.Sleep(500 * time.Millisecond)
-	// 	leaderID = findLeader(nodes, ids)
-	// }
+	leaderID := findLeader(nodes, ids)
+	if leaderID == 0 {
+		log.Println("no leader elected yet, waiting a bit more...")
+		time.Sleep(500 * time.Millisecond)
+		leaderID = findLeader(nodes, ids)
+	}
 	// log.Printf("=== current leader is node %d — killing it now ===", leaderID)
+	log.Printf("=== leader is node %d — submitting writes ===", leaderID)
+	leader := nodes[leaderID]
+	log.Printf("Submittitiiiiigggggg--------------------->")
+	leader.Submit(node.Put{Key: "foo", Value: "bar"})
+	leader.Submit(node.Put{Key: "name", Value: "lundy"})
 
-	// nodes[leaderID].Kill()
-	// tr.UnRegister(leaderID)
+	log.Println("--- waiting for replication----")
+	time.Sleep(500 * time.Millisecond)
 
-	log.Println("--- watching remaining nodes for re-election ---")
-	time.Sleep(1 * time.Second)
-
-	log.Println("---- final state ----- ")
+	log.Println("---- reading foo from every node ----- ")
 	for _, id := range ids {
 		// if id == leaderID {
 		// 	log.Printf("node killed : %d", id)
 		// 	continue
 		// }
-		n := nodes[id]
-		log.Printf("node %d: state=%s term=%d votedFor=%d", id, n.State(), n.Term(), n.VotedFor())
+		v, ok := nodes[id].Get("foo")
+		log.Printf("node %d: foo=%q found=%v", id, v, ok)
 	}
 }
 
