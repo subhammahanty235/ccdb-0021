@@ -51,7 +51,7 @@ func main() {
 		// 	log.Printf("node killed : %d", id)
 		// 	continue
 		// }
-		v, ok := nodes[id].Get("foo")
+		v, ok := nodes[id].GetLatest("foo")
 		log.Printf("node %d: foo=%q found=%v", id, v, ok)
 	}
 }

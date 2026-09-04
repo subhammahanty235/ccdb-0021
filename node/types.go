@@ -67,6 +67,12 @@ func (a AppendEntriesArgs) String() string {
 
 // SC
 type Put struct {
-	Key   string
-	Value string
+	Key       string
+	Value     string
+	Timestamp int64
+}
+
+type Version struct {
+	Timestamp int64
+	Value     string
 }

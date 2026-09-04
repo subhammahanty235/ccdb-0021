@@ -3,6 +3,7 @@ package node
 import (
 	"fmt"
 	"log"
+	"math"
 	"sync"
 	"time"
 )
@@ -30,7 +31,8 @@ type Node struct {
 	matchIndex map[int]int
 
 	electionResetEvent time.Time
-	kv                 map[string]string
+	kv                 map[string][]Version
+	clock              int64
 	stopCh             chan struct{}
 }
 
@@ -45,7 +47,7 @@ func NewNode(id int, peers []int, sender Sender) *Node {
 		state:       Follower,
 		nextIndex:   make(map[int]int),
 		matchIndex:  make(map[int]int),
-		kv:          make(map[string]string),
+		kv:          make(map[string][]Version),
 		stopCh:      make(chan struct{}),
 	}
 }
@@ -118,6 +120,12 @@ func (n *Node) Submit(cmd interface{}) (index int, isLeader bool) {
 		return -1, false
 	}
 
+	if put, ok := cmd.(Put); ok {
+		n.clock++
+		put.Timestamp = n.clock
+		cmd = put
+	}
+
 	entry := LogEntry{
 		Term:    n.currentTerm,
 		Index:   len(n.logEntries),
@@ -129,11 +137,26 @@ func (n *Node) Submit(cmd interface{}) (index int, isLeader bool) {
 	return entry.Index, true
 }
 
-func (n *Node) Get(key string) (string, bool) {
+func (n *Node) Get(key string, callTime int64) (string, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	v, ok := n.kv[key]
-	return v, ok
+	version, ok := n.kv[key]
+	if !ok {
+		return "", false
+	}
+
+	for _, v := range version {
+		if v.Timestamp <= callTime {
+			fmt.Printf("Timestamp is %d and callTime is %d\n", v.Timestamp, callTime)
+			return v.Value, true
+		}
+	}
+
+	return "", false
+}
+
+func (n *Node) GetLatest(key string) (string, bool) {
+	return n.Get(key, math.MaxInt64)
 }
 
 // checks whether any new entry now has a majprity of relicas storing it,
@@ -169,7 +192,7 @@ func (n *Node) applyCommitedLocked() {
 		n.lastApplied++
 		entry := n.logEntries[n.lastApplied]
 		if put, ok := entry.Command.(Put); ok {
-			n.kv[put.Key] = put.Value
+			n.kv[put.Key] = append(n.kv[put.Key], Version{Timestamp: put.Timestamp, Value: put.Value})
 			log.Printf("[node %d] applied %v at index %d", n.id, put, n.lastApplied)
 		}
 	}
