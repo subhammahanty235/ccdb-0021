@@ -169,6 +169,7 @@ func (n *Node) runHeartBeat() {
 
 				if reply.Success {
 					n.nextIndex[peerID] = ni + len(entries)
+					n.matchIndex[peerID] = ni + len(entries) - 1
 					n.updateCommitedIndexLocked()
 				} else {
 					if n.nextIndex[peerID] > 1 {

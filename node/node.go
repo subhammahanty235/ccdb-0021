@@ -146,7 +146,7 @@ func (n *Node) updateCommitedIndexLocked() {
 
 		count := 1
 		for _, peerID := range n.peers {
-			if n.nextIndex[peerID] >= N {
+			if n.matchIndex[peerID] >= N {
 				count++
 			}
 		}
