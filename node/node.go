@@ -140,14 +140,14 @@ func (n *Node) Submit(cmd interface{}) (index int, isLeader bool) {
 func (n *Node) Get(key string, callTime int64) (string, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	version, ok := n.kv[key]
+	versions, ok := n.kv[key]
 	if !ok {
 		return "", false
 	}
 
-	for _, v := range version {
+	for i := len(versions) - 1; i >= 0; i-- {
+		v := versions[i]
 		if v.Timestamp <= callTime {
-			fmt.Printf("Timestamp is %d and callTime is %d\n", v.Timestamp, callTime)
 			return v.Value, true
 		}
 	}
