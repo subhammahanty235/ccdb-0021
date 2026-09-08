@@ -34,6 +34,8 @@ type Node struct {
 	kv                 map[string][]Version
 	clock              int64
 	stopCh             chan struct{}
+
+	gcThreshold int64
 }
 
 func NewNode(id int, peers []int, sender Sender) *Node {
@@ -137,25 +139,25 @@ func (n *Node) Submit(cmd interface{}) (index int, isLeader bool) {
 	return entry.Index, true
 }
 
-func (n *Node) Get(key string, callTime int64) (string, bool) {
+func (n *Node) Get(key string, callTime int64) (string, bool, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	versions, ok := n.kv[key]
 	if !ok {
-		return "", false
+		return "", false, fmt.Errorf("read timestamp %d is below GC threshold %d", callTime, n.gcThreshold)
 	}
 
 	for i := len(versions) - 1; i >= 0; i-- {
 		v := versions[i]
 		if v.Timestamp <= callTime {
-			return v.Value, true
+			return v.Value, true, nil
 		}
 	}
 
-	return "", false
+	return "", false, nil
 }
 
-func (n *Node) GetLatest(key string) (string, bool) {
+func (n *Node) GetLatest(key string) (string, bool, error) {
 	return n.Get(key, math.MaxInt64)
 }
 
@@ -191,13 +193,38 @@ func (n *Node) applyCommitedLocked() {
 	for n.lastApplied < n.commitIndex {
 		n.lastApplied++
 		entry := n.logEntries[n.lastApplied]
-		if put, ok := entry.Command.(Put); ok {
-			n.kv[put.Key] = append(n.kv[put.Key], Version{Timestamp: put.Timestamp, Value: put.Value})
-			log.Printf("[node %d] applied %v at index %d", n.id, put, n.lastApplied)
+		switch cmd := entry.Command.(type) {
+		case Put:
+			n.kv[cmd.Key] = append(n.kv[cmd.Key], Version{Timestamp: cmd.Timestamp, Value: cmd.Value})
+			log.Printf("[node %d] applied %v at index %d", n.id, cmd, n.lastApplied)
+		case GC:
+			n.runGCLocked(cmd.Threshold)
+			log.Printf("[node %d] applied GC threshold=%d at index %d", n.id, cmd.Threshold, n.lastApplied)
 		}
 	}
 }
 
+func (n *Node) runGCLocked(threshold int64) {
+	if threshold <= n.gcThreshold {
+		return
+	}
+
+	n.gcThreshold = threshold
+	for key, versions := range n.kv {
+		keepFrom := 0
+		for i, v := range versions {
+			if v.Timestamp <= threshold {
+				keepFrom = i
+			}
+		}
+
+		if keepFrom > 0 {
+			pruned := append([]Version{}, versions[keepFrom:]...)
+			log.Printf("[node %d] GC key %q: %d versions -> %d", n.id, key, len(versions), len(pruned))
+			n.kv[key] = pruned
+		}
+	}
+}
 func (n *Node) HandleRequestVote(args RequestVoteArgs) RequestVoteReply {
 	n.mu.Lock()
 	defer n.mu.Unlock()

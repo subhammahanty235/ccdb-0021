@@ -43,6 +43,8 @@ func main() {
 	leader.Submit(node.Put{Key: "name", Value: "lundy"})
 	leader.Submit(node.Put{Key: "foo", Value: "bar- v2"})
 	leader.Submit(node.Put{Key: "foo", Value: "bar- v3"})
+	leader.Submit(node.Put{Key: "foo", Value: "bar- v4"})
+	leader.Submit(node.Put{Key: "foo", Value: "bar- v5"})
 
 	log.Println("--- waiting for replication----")
 	time.Sleep(500 * time.Millisecond)
@@ -56,10 +58,26 @@ func main() {
 	// 	v, ok := nodes[id].GetLatest("foo")
 	// 	log.Printf("node %d: foo=%q found=%v", id, v, ok)
 	// }
-	log.Println("---- time travel: reading foo at each timestamp ----")
+	log.Println("---- time travel: before GC ----")
 	for ts := int64(1); ts <= 4; ts++ {
-		v, ok := nodes[leaderID].Get("foo", ts)
-		log.Printf("foo as of t=%d: %q found=%v", ts, v, ok)
+		v, ok, err := leader.Get("foo", ts)
+		log.Printf("foo as of t=%d: %q found=%v, err=%v", ts, v, ok, err)
+	}
+
+	log.Println("=== running GC with threshold=3 ===")
+	leader.Submit(node.GC{Threshold: 3})
+	time.Sleep(500 * time.Millisecond)
+
+	log.Println("--- time travel AFTER gc ---")
+	for ts := int64(1); ts <= 4; ts++ {
+		v, ok, err := leader.Get("foo", ts)
+		log.Printf("  foo as of t=%d: %q found=%v err=%v", ts, v, ok, err)
+	}
+
+	log.Println("--- latest read from every node (should still work) ---")
+	for _, id := range ids {
+		v, ok, err := nodes[id].GetLatest("foo")
+		log.Printf("node %d: foo=%q found=%v err=%v", id, v, ok, err)
 	}
 }
 

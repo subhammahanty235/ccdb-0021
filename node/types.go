@@ -76,3 +76,7 @@ type Version struct {
 	Timestamp int64
 	Value     string
 }
+
+type GC struct {
+	Threshold int64
+}
