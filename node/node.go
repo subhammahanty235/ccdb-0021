@@ -142,9 +142,12 @@ func (n *Node) Submit(cmd interface{}) (index int, isLeader bool) {
 func (n *Node) Get(key string, callTime int64) (string, bool, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if callTime < n.gcThreshold {
+		return "", false, fmt.Errorf("read timestamp %d is below GC threshold %d", callTime, n.gcThreshold)
+	}
 	versions, ok := n.kv[key]
 	if !ok {
-		return "", false, fmt.Errorf("read timestamp %d is below GC threshold %d", callTime, n.gcThreshold)
+		return "", false, nil
 	}
 
 	for i := len(versions) - 1; i >= 0; i-- {
@@ -163,7 +166,7 @@ func (n *Node) GetLatest(key string) (string, bool, error) {
 
 // checks whether any new entry now has a majprity of relicas storing it,
 func (n *Node) updateCommitedIndexLocked() {
-	fmt.Printf("Update commityed index locked running\n")
+	// fmt.Printf("Update commityed index locked running\n")
 	for N := len(n.logEntries) - 1; N > n.commitIndex; N-- {
 		if n.logEntries[N].Term != n.currentTerm {
 			continue
@@ -175,7 +178,7 @@ func (n *Node) updateCommitedIndexLocked() {
 				count++
 			}
 		}
-		fmt.Printf("checking majority here %d , and lengh of peer is %d--------------->\n", count, len(n.peers))
+		// fmt.Printf("checking majority here %d , and lengh of peer is %d--------------->\n", count, len(n.peers))
 		if count*2 > len(n.peers)+1 { // majority
 			n.commitIndex = N
 			n.applyCommitedLocked()
@@ -189,7 +192,7 @@ func (n *Node) updateCommitedIndexLocked() {
 }
 
 func (n *Node) applyCommitedLocked() {
-	fmt.Printf("apply commityed index locked running\n")
+	// fmt.Printf("apply commityed index locked running\n")
 	for n.lastApplied < n.commitIndex {
 		n.lastApplied++
 		entry := n.logEntries[n.lastApplied]

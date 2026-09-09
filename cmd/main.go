@@ -40,7 +40,7 @@ func main() {
 	leader := nodes[leaderID]
 	log.Printf("Submittitiiiiigggggg--------------------->")
 	leader.Submit(node.Put{Key: "foo", Value: "bar"})
-	leader.Submit(node.Put{Key: "name", Value: "lundy"})
+	// leader.Submit(node.Put{Key: "name", Value: "lundy"})
 	leader.Submit(node.Put{Key: "foo", Value: "bar- v2"})
 	leader.Submit(node.Put{Key: "foo", Value: "bar- v3"})
 	leader.Submit(node.Put{Key: "foo", Value: "bar- v4"})

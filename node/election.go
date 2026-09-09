@@ -1,7 +1,6 @@
 package node
 
 import (
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
@@ -132,10 +131,10 @@ func (n *Node) runHeartBeat() {
 			go func(peerId int) {
 				n.mu.Lock()
 				ni := n.nextIndex[peerId]
-				fmt.Printf("peer id is %d and next index is %d\n", peerId, ni)
-				fmt.Println("Log entries length is ", len(n.logEntries))
+				// fmt.Printf("peer id is %d and next index is %d\n", peerId, ni)
+				// fmt.Println("Log entries length is ", len(n.logEntries))
 				prevLogIndex := ni - 1
-				fmt.Println("Prev log index is  ", prevLogIndex)
+				// fmt.Println("Prev log index is  ", prevLogIndex)
 				prevLogTerm := n.logEntries[prevLogIndex].Term
 				entries := append([]LogEntry{}, n.logEntries[ni:]...)
 				leadercommit := n.commitIndex
